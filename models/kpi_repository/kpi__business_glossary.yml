@@ -1,0 +1,45 @@
+version: 2
+seeds:
+  - name: kpi__business_glossary
+    description: 'KPI Business Glossary'
+    type: base table
+    columns:
+      - name: indicator
+        description: 'Measure name'
+        data_type: text
+        data_tests:
+          - not_null
+          # if this test fails, you forgot to add a component model into kpi__repository union_relations list
+          - assert_values_in_other_model:
+              enabled: false
+              values_model: kpi__repository
+              values_column_name: indicator
+              hint: You forgot to add a component model into kpi__repository union
+      - name: readable_indicator
+        description: "A human readable measure name, suitable for placement into reports"
+        data_type: text
+        data_tests:
+          - not_null
+      - name: business_meaning
+        description: 'Definition of the measure'
+        data_type: text
+        data_tests:
+          - not_null
+      - name: methodology
+        description: 'a relative HTTP link to DBT document describing measurement methodology'
+        data_type: text
+        data_tests:
+          - not_null
+      - name: category
+        description: 'The part of the business process this measurement is applicable to'
+        data_type: text
+        data_tests:
+          - not_null
+          - accepted_values:
+              values:
+                - accounting
+                - acquisition
+                - conversion
+                - engagement
+                - retention
+                - fpna

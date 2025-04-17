@@ -1,0 +1,24 @@
+version: 2
+seeds:
+  - name: kpi__country_regions
+    description: |
+      Mappings of countries to common geographic regions, particularly in a business or organizational context
+    type: base table
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - country
+            - region
+    columns:
+      - name: country_code
+        description: "ISO 3166-1 alpha-2 Code"
+        data_type: text
+        data_tests:
+          - not_null
+          - unique
+      - name: region
+        description: "Economic region"
+        data_type: text
+        data_tests:
+          - not_null
+

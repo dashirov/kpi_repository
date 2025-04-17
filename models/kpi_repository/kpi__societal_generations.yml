@@ -1,0 +1,23 @@
+version: 2
+seeds:
+  - name: kpi__societal_generations
+    description: |
+      *Societal Generations*
+    type: base table
+    columns:
+      - name: generation
+        description: "Generation"
+        data_type: text
+        data_tests:
+          - not_null
+          - unique
+      - name: from_year
+        description: "Birth year, earliest"
+        data_type: number
+        data_tests:
+          - not_null
+      - name: upto_year
+        description: "Birth year, latest"
+        data_type: number
+          - not_null
+

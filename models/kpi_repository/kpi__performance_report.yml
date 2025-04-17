@@ -1,0 +1,170 @@
+version: 2
+models:
+  - name: kpi__performance_report
+    description: |
+      **Model Purpose:**
+
+      The **kpi__performance_report** model generates a comprehensive performance report by consolidating and enriching KPI data from the `kpi__repository`. It provides current and prior period values for key metrics, enabling year-over-year comparisons and trend analysis. This model is essential for stakeholders who require insights into business performance over time.
+
+      Parameters
+
+          reporting_period
+            Defines the granularity at which KPI measurements are grouped and compared.
+              
+            Acceptable values: 'day', 'week', 'month', 'quarter', or 'year'.
+            Default: `'week'
+          
+            Effect on Execution:  
+              * Determines how 'cycle' and 'cycle_timestamp' are truncated in the joined KPI repository data.
+              * Drives the offset logic for prior period lookups (e.g., matching last year’s same week if 'week' or 'bi-week').
+          
+          anchor_date
+            A reference date used to identify the last complete reporting period.
+            
+            Acceptable values: a date string in ISO format ('YYYY-MM-DD')
+            Default: current date in ISO format
+
+            Effect on Execution:  
+              * If the model runs incrementally, data is loaded only up to the cycle timestamp that ends before this anchor date.
+              * Prevents partial or future periods from appearing in the final output, focusing exclusively on fully closed intervals.
+
+          backfill_mode
+            Specifies whether to bypass incremental constraints to allow full historical data loads.
+            
+            Acceptable Values: true/false boolean value
+            Default: false
+
+            Effect on Execution:  
+              * If 'true', the model ignores the normal incremental filter, reprocessing historical data in the repository.
+              * If 'false', it solely updates the last complete reporting period (and matching prior offsets), improving performance and avoiding partial data ingestion.
+
+      ---
+
+      **Methodology:**
+
+      This model generates a **Performance Report** by consolidating **current** and **prior** KPI measurements from the `kpi__repository` and optionally matching them to AOP (Annual Operating Plan) targets. It allows direct comparisons across periods, plus an indication of how results align with planned goals.
+
+      1. **Current and Prior Measurements:**
+         - **`current_measurements`:**
+           - Pulls KPI measurements for the last complete `reporting_period` (or beyond if `backfill_mode=true`).
+           - Each record includes the metric (`indicator`), dimensional breakdown (`dimensions`), and a numeric `value` to be renamed `current_value`.
+         - **`prior_measurements`:**
+           - Extracts comparable data from the `kpi__repository` for the corresponding prior period:
+             - For weekly cycles, matches the same week in the previous year (or `'bi-week'` logic).
+             - For monthly/quarterly/yearly cycles, offsets by exactly one year from the cycle timestamp.
+           - Provides a `value` that becomes `prior_value` after the join.
+
+      2. **AOP Targets:**
+         - If an AOP table exists (`kpi__aop_targets`), each relevant record is joined on `(cycle_timestamp, cycle, indicator, dimensions)` to yield `plan` as `aop_value`.
+         - If the table is missing or no matching plan is found, `aop_value` remains `NULL`.
+
+      3. **Merging Data (`measurements_with_prior` CTE):**
+         - **Left Join** merges current measurements, AOP data, and prior measurements on the same dimension set.
+         - Uses `ROW_NUMBER()` to keep only the best prior match (i.e., the latest preceding cycle).
+         - Labels the final metrics as:
+           - **`current_value`**: The latest measured KPI in the cycle.
+           - **`prior_value`**: The KPI from the matching prior cycle.
+           - **`aop_value`**: The planned or targeted goal from the AOP table.
+
+      4. **Final Output:**
+         - Constructs `metric` and `coordinates` strings from dimension keys and values for readability.
+         - Determines a `sortkey` for convenient ordering by cycle type (day=0, week=1, etc.) plus the numerical date portion.
+         - Generates a `label` field (e.g., `'W-52'`, `'Jan 2024'`) for user-friendly period identification.
+         - Uses `dbt_utils.generate_surrogate_key` to form a unique `alt_id`.
+
+      ---
+
+      **Considerations for Data Accuracy:**
+
+      - **Incremental Operation:**
+        - Default logic includes only the last complete `reporting_period` in the final dataset unless `backfill_mode=true`.
+        - Minimizes partial future data from polluting the current KPIs.
+      - **Consistency in Dimensions:**
+        - Mismatches between current and prior data for `dimensions` lead to fewer matched rows.
+      - **Date Alignment:**
+        - For weekly cycles, the model matches the same week number one year prior. For monthly or quarterly, subtracts exactly one year from the cycle_timestamp.
+      - **AOP Presence:**
+        - If `kpi__aop_targets` is absent or no matching record is found, `aop_value` stays `NULL`.
+      - **Partial Period Caution:**
+        - If the anchor_date is mid-period, ensure you understand that partial data is excluded to avoid incomplete results.
+
+      ---
+
+      By merging current measurements, prior comparisons, and optional AOP targets, **`kpi__performance_report`** 
+      provides a unified view of KPI trends over time and in relation to annual planning goals. Adjusting **`
+      reporting_period`, `anchor_date`, and `backfill_mode`** modifies the time window and data coverage to match 
+      our analytic and historical data needs.
+    type: base table
+    columns:
+      - name: id
+        description: Unique record identifier
+        data_type: text
+        data_tests:
+          - not_null
+          - unique
+      - name: indicator
+        description: 'What is being measured by this metric'
+        data_type: text
+      - name: cycle
+        description: 'Reporting period type'
+        data_type: text
+        data_tests:
+          - accepted_values:
+              values: [ 'day', 'week', 'bi-week', 'month', 'quarter', 'year' ]
+      - name: cycle_timestamp
+        description: 'Measurement period start time'
+        data_type: timestamp_ntz
+        data_tests:
+          - not_null
+      - name: dimensions
+        description: 'Measurement dimensional coordinates'
+        data_type: object
+        data_tests:
+          - json_key_accepted_values:
+              key: geo
+              accepted_values: [ 'US', 'ROW' ]
+          - json_key_accepted_values:
+              key: country
+              accepted_values: [ "XX" ]
+              accepted_relation: ref('kpi__countries')
+              accepted_column: alpha_2
+          - json_key_accepted_values:
+              key: platform
+              accepted_values: [ 'iOS','Android','Web', 'Other' ]
+          - json_key_accepted_values:
+              key: user_class
+              accepted_values: [ 'Premium','Non-Premium','PremiumPlus' ]
+      - name: metric
+        description: 'Human readable metric name (part of, less exact coordinates)'
+        data_type: text
+      - name: coordinates
+        description: 'Human readable metric coordinate'
+        data_type: text
+      - name: sortkey
+        description: 'When combined on the same chart, indicator order it should be displayed in'
+        data_type: float
+      - name: label
+        description: 'What the X-axis should be labeled with'
+        data_type: text
+      - name: current_value
+        description: 'Value of the measurement at this period'
+        data_type: number
+      - name: prior_value
+        description: 'Value of the measurement at prior (most likely a year ago, unless configured otherwise) period'
+        data_type: number
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - id
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - indicator
+            - dimensions
+            - cycle
+            - cycle_timestamp
+      - kpi_module_freshness:
+          reporting_period: week
+          severity: warn
+      - kpi_module_freshness:
+          reporting_period: month
+          severity: warn

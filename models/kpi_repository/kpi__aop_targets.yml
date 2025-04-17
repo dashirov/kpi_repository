@@ -1,0 +1,41 @@
+version: 2
+seeds:
+  - name: kpi__aop_targets
+    description: |
+      *Annual Operating Plan Targets* provided annually by Financial Planning and processed quarterly by BI-E
+      
+      1. SLT secures a Board of Directors approved AOP Plan annually
+      2. Financial Planning translates the AOP Plan into monthly AOP Plan KPI Targets
+      3. BI-E splits monthly AOP Plan KPI Targets into daily, weekly, bi-weekly targets 
+         and secure Financial Planning's approval quarterly
+      4. BI-E loads monthly, bi-weekly, weekly, daily targets into this data set quarterly
+
+    type: base table
+    columns:
+      - name: cycle_timestamp
+        description: Timestamp associated with the reporting time period start time
+        data_type: text
+        data_tests:
+          - not_null
+      - name: plan
+        description: "AOP Plan Target Value"
+        data_type: number
+      - name: indicator
+        description: "Metric measurement name"
+        data_type: text
+      - name: dimensions
+        description: Measurement dimensional coordinates
+        data_type: text
+        data_tests:
+          - not_null
+      - name: cycle
+        description: Reporting time period
+        data_type: text
+        data_tests:
+          - not_null
+          - accepted_values:
+              values: ["day","week","bi-week","month"]
+
+
+
+

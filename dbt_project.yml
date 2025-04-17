@@ -1,0 +1,84 @@
+name: 'kpi_repository'
+version: '0.0.1'
+
+require-dbt-version: [">=1.8.0"] # using data_tests not tests
+
+profile: 'kpi_repository'
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:         # directories to be removed by `dbt clean`
+  - "target"
+  - "dbt_packages"
+
+seeds:
+  kpi_repository:
+    +schema: kpi_repository
+    kpi__business_glossary:
+      enabled: true
+      +column_types:
+        INDICATOR: string
+        READABLE_INDICATOR: string
+        BUSINESS_MEANING: string
+        METHODOLOGY: string
+        CATEGORY: string
+    kpi__aop_targets:
+      enabled: true
+      +column_types:
+        CYCLE_TIMESTAMP: timestamp_ntz
+        PLAN: number(18,8)
+        INDICATOR: string
+        DIMENSIONS: string
+        CYCLE: string
+    kpi__countries:
+      enabled: true
+      +column_types:
+        ALPHA_2: varchar(2)
+        ALPHA_3: varchar(3)
+        FLAG: varchar
+        NAME: varchar
+    kpi__country_holidays:
+      enabled: true
+      +column_types:
+        COUNTRY: string
+        DATE: date
+        HOLIDAY: string
+    kpi__country_regions:
+      enabled: true
+      +column_types:
+        COUNTRY_CODE: varchar(2)
+        REGION: string
+    kpi__repository_shadow:
+      enabled: true
+      +column_types:
+        INDICATOR: string
+        DIMENSIONS: string
+        CYCLE_TIMESTAMP: timestamp_ntz
+        CYCLE: string
+        VALUE: number(18,8)
+        ID: string
+    kpi__societal_generations:
+      enabled: true
+      +column_types:
+        GENERATION: string
+        FROM_YEAR: number(4)
+        UPTO_YEAR: number(4)
+
+dispatch:
+  - macro_namespace: dbt
+    search_order:
+      - kpi_repository
+      - dbt_snowflake_query_tags
+      - dbt
+
+#vars:
+#  kpi_repository_models:
+#    - my_custom_acquisition_model
+#    - my_custom_conversion_model
+#    - my_custom_engagement_model
+#    - my_custom_retention_model
+

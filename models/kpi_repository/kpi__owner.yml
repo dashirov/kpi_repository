@@ -1,0 +1,27 @@
+version: 2
+models:
+  - name: kpi__owner
+    description: "A registry of KPI ownership assignment to Business Leaders and their BI Pals"
+    type: base table
+    columns:
+      - name: effective_date
+        description: "The date KPI ownership was assigned"
+        data_type: date
+        data_tests:
+          - not_null
+
+      - name: indicator
+        description: Metric measurement (see business glossary for details)
+        data_type: text
+        data_tests:
+          - not_null
+
+      - name: owner
+        description: "Display name identifying the KPI owner"
+        data_type: text
+      - name: lead_analyst
+        description: "Display name identifying the Lead Analyst assigned to KPI"
+        data_type: text
+      - name: bi_pal
+        description: "Display name identifying the BI Pal assigned to the KPI"
+        data_type: text

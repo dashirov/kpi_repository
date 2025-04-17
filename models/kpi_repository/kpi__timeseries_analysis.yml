@@ -1,0 +1,202 @@
+version: 2
+models:
+  - name: kpi__timeseries_analysis
+    description: |
+      **Model Purpose:**
+
+      The **kpi__timeseries_analysis** model performs rudimentary outlier detection on key performance indicators (KPIs) by analyzing their time series data. It identifies potential anomalies in KPI values by comparing the current value to historical values within a specified lookback period. This model helps stakeholders quickly identify unusual changes in KPIs that may require further investigation.
+
+      ---
+
+
+
+      1. **Configuration of Reporting Timeframes:**
+
+         - The model defines a mapping of reporting cycles to the number of historical periods to consider for outlier detection:
+
+           - `'day'`: 32 periods (approximately one month)
+           - `'week'`: 8 periods (approximately two months)
+           - `'month'`: 13 periods (approximately one year)
+           - `'quarter'`: 5 periods (approximately one year and a quarter)
+           - `'year'`: 3 periods
+
+         - This configuration allows the model to adjust the sensitivity of outlier detection based on the frequency of the data.
+
+      2. **Creation of Spines for Dates and Metrics:**
+
+         - **Calendar Spine (`CALENDAR_SPINE`):**
+
+           - Generates a sequence of dates from `'2018-01-01'` up to the current date.
+           - This spine ensures that all dates within the desired range are considered, even if there are missing data points.
+
+         - **Reporting Spine (`REPORTING_SPINE`):**
+
+           - For each date in the calendar spine and each reporting cycle, calculates the corresponding `CYCLE_TIMESTAMP` using `DATE_TRUNC`.
+           - This creates a comprehensive set of reporting periods for each cycle.
+
+         - **Metric Spine (`METRIC_SPINE`):**
+
+           - Retrieves all unique combinations of `INDICATOR` (metric name) and `DIMENSIONS` from the `kpi__performance_report` model.
+           - This ensures that all metrics and their associated dimensions are included in the analysis.
+
+      3. **Outlier Detection Logic:**
+
+         - The model iterates over each reporting cycle defined in the `reporting_timeframes` configuration.
+
+         - For each cycle:
+
+           - **Joining Data:**
+
+             - Joins the reporting spine (`RS`) and metric spine (`MS`) to create a comprehensive set of possible metric-period combinations.
+             - Left joins the relevant data from `kpi__performance_report` (`REPO`) based on `INDICATOR`, `DIMENSIONS`, `CYCLE`, and `CYCLE_TIMESTAMP`.
+
+           - **Calculating Historical Statistics:**
+
+             - **HISTORICAL_LOOKBACK:**
+
+               - Sets the number of historical periods to consider based on the reporting cycle.
+
+             - **HAS_HISTORY:**
+
+               - Determines if there is sufficient historical data by counting the number of previous data points (`CURRENT_VALUE`) within the historical lookback window.
+               - Ensures that calculations are only performed when enough historical data is available.
+
+             - **MIDPOINT and SIGMA:**
+
+               - Calculates the `MIDPOINT` as the average of `CURRENT_VALUE` over the historical lookback period.
+               - Calculates `SIGMA` as the sample standard deviation of `CURRENT_VALUE` over the historical lookback period.
+
+           - **Defining Boundaries and Alerts:**
+
+             - **UPPER_BOUNDARY and LOWER_BOUNDARY:**
+
+               - Defines the acceptable range as `MIDPOINT ± 1.5 * SIGMA`.
+
+             - **IN_ALERT:**
+
+               - Flags whether the `CURRENT_VALUE` falls outside the acceptable range.
+
+             - **ALERT:**
+
+               - Sets an alert symbol:
+                 - `'↑'` if `CURRENT_VALUE` is above the `UPPER_BOUNDARY`.
+                 - `'↓'` if `CURRENT_VALUE` is below the `LOWER_BOUNDARY`.
+                 - `NULL` if within the acceptable range.
+
+         - **Combining Results:**
+
+           - Uses `UNION ALL` to combine the results for all reporting cycles into a single dataset.
+
+      4. **Considerations and Limitations:**
+
+         - **Data Completeness:**
+
+           - The model accounts for missing data by using the calendar and reporting spines to include all possible periods and metrics.
+
+         - **Leap Years and Date Handling:**
+
+           - By generating a comprehensive calendar spine, the model avoids issues with date gaps, including leap years.
+
+         - **Performance:**
+
+           - The model may be computationally intensive due to the window functions and the cross joins, especially as the number of metrics and dimensions increases.
+
+         - **Simplistic Outlier Detection:**
+
+           - The outlier detection method is rudimentary, using standard deviation as a measure of variance.
+           - It does not account for trends, seasonality, or other time series patterns.
+           - For more advanced analysis, consider using statistical or machine learning models that can capture more complex behaviors.
+
+      ---
+
+      By implementing this model, stakeholders can quickly identify potential anomalies in KPI performance, enabling proactive investigation and response to unusual business events. This model provides a foundational approach to outlier detection that can be further enhanced with more sophisticated analytics as needed.
+    type: base table
+    columns:
+      - name: indicator
+        description: 'What is being measured by this metric'
+        data_type: text
+        data_tests:
+          - assert_values_in_other_model:
+              values_model: kpi__business_glossary
+              values_column_name: indicator
+      - name: dimensions
+        description: 'Measurement dimensional coordinates'
+        data_type: object
+        data_tests:
+          - json_key_accepted_values:
+              key: geo
+              accepted_values: [ 'US', 'ROW' ]
+          - json_key_accepted_values:
+              key: country
+              accepted_values: [ "XX" ]
+              accepted_relation: ref('kpi__countries')
+              accepted_column: alpha_2
+          - json_key_accepted_values:
+              key: platform
+              accepted_values: [ 'iOS','Android','Web', 'Other' ]
+          - json_key_accepted_values:
+              key: user_class
+              accepted_values: [ 'Premium','Non-Premium','PremiumPlus' ]
+      - name: cycle
+        description: 'Reporting period type'
+        data_type: text
+        data_tests:
+          - accepted_values:
+              values: [ 'day', 'week', 'bi-week', 'month', 'quarter', 'year' ]
+      - name: cycle_timestamp
+        description: 'Reporting period start time'
+        data_type: date
+        data_tests:
+          - not_null
+      - name: _dbt_source_relation
+        description: 'What model this data came from'
+        data_type: text
+      - name: value
+        description: 'Measured value'
+        data_type: number
+      - name: id
+        description: Unique record identifier
+        data_type: text
+        data_tests:
+          - not_null
+          - unique
+      - name: historical_lookback
+        description: 'The number of prior data points used to compute upper/lower bands'
+        data_type: number
+      - name: has_history
+        description: 'Whether or not this metric has enough historical data points to form a trend'
+        data_type: boolean
+      - name: midpoint
+        description: 'Average value of historical points in the window'
+        data_type: number
+      - name: sigma
+        description: 'Standard deviation of historical points in the window'
+        data_type: float
+      - name: upper_boundary
+        description: 'Upper Bollinger Band'
+        data_type: float
+      - name: lower_boundary
+        description: 'Lower Bollinger Band'
+        data_type: float
+      - name: in_alert
+        description: 'Whether or not the current measurement falls outside of the upper and lower bands'
+        data_type: boolean
+      - name: alert
+        description: 'Up/Down arrow indicating which band is violated if in alert'
+        data_type: text
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - id
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - indicator
+            - dimensions
+            - cycle
+            - cycle_timestamp
+      - kpi_module_freshness:
+          reporting_period: week
+          severity: warn
+      - kpi_module_freshness:
+          reporting_period: month
+          severity: warn

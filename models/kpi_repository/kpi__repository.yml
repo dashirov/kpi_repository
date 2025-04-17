@@ -1,0 +1,143 @@
+version: 2
+models:
+  - name: kpi__repository
+    description: |
+      **Model Purpose:**
+
+      The **kpi__repository** model serves as a centralized repository that consolidates key performance indicators (KPIs) from various domains, including acquisition, engagement, and conversion. By unifying these metrics into a single table, this model facilitates comprehensive analysis and reporting across different aspects of the business.
+
+      ---
+
+
+
+      1. **Data Aggregation:**
+
+         - The model uses the `dbt_utils.union_relations` macro to combine data from multiple source models into a single table.
+         - The source models included are:
+
+           - **Acquisition KPIs:**
+             - `kpi__acquisition__registrations`
+             - `kpi__acquisition__active_registered_users`
+             - `kpi__acquisition__new_users`
+             - `kpi__acquisition__resurrected_users`
+             - `kpi__acquisition__store_rank`
+             - `kpi__acquisition__trial_starts`
+
+           - **Conversion KPIs:**
+             - `kpi__conversion__registration_to_trial_conversion_rate`
+             - `kpi__conversion__trial_to_premium_conversion_rate`
+             - `kpi__conversion__trial_vs_direct`
+             
+           - **Engagement KPIs:**
+             - `kpi__engagement__active_food_users`
+             - `kpi__engagement__consecutive_food_users`
+             - `kpi__engagement__average_daily_active_registered_users`
+             - `kpi__engagement__initial_food_users_part_1`
+             - `kpi__engagement__initial_food_users_part_2`
+
+           - **Retention KPIs:**
+             - `kpi__retention__eop_premium_subscribers`
+             - `kpi__fpna__premium_subscription_renewal_rate_pn_over_pn_minus_one`
+             - `kpi__retention__subscription_renewals`
+
+      2. **Columns Included:**
+
+         - The columns selected from each source model are:
+
+           - `id`: A unique identifier for each record.
+           - `indicator`: The name of the metric.
+           - `cycle`: The reporting period (e.g., 'week').
+           - `dimensions`: A JSON object containing dimension attributes (e.g., geography, platform).
+           - `cycle_timestamp`: The timestamp representing the start of the reporting cycle.
+           - `value`: The value of the metric.
+
+      3. **Column Overrides:**
+
+         - The `VALUE` column's data type is overridden to `NUMBER(18,4)` for consistency across different metrics.
+         - The `CYCLE_TIMESTAMP` column's data type is set to `TIMESTAMP_NTZ` (timestamp without time zone).
+
+      4. **Data Union:**
+
+         - The `dbt_utils.union_relations` macro efficiently unions all the specified models by aligning the selected columns and applying the column overrides.
+         - This results in a unified table that contains all the KPIs with consistent data types and column structures.
+
+      5. **Considerations:**
+
+         - **Data Consistency:**
+           - Ensures that all source models have compatible data types for the included columns to prevent errors during the union operation.
+         - **Scalability:**
+           - As new KPIs are developed, they can be easily added to the repository by including them in the `relations` list within the `dbt_utils.union_relations` macro.
+         - **Performance:**
+           - The model is materialized as a table to optimize query performance when accessing the aggregated KPIs.
+
+      ---
+
+      By consolidating KPIs from various domains into the **kpi__repository** model, analysts and stakeholders can access a comprehensive set of metrics from a single source. This facilitates cross-functional analysis, simplifies reporting processes, and enhances the ability to track business performance holistically.
+    type: base table
+    columns:
+      - name: _dbt_source_relation
+        description: 'What model this data came from'
+        data_type: text
+      - name: indicator
+        description: 'What is being measured by this metric'
+        data_type: text
+        data_tests:
+          # if this test fails, you forgot to add measure definition(s) into kpi__business_glossary.sql
+          - assert_values_in_other_model:
+              values_model: kpi__business_glossary
+              values_column_name: indicator
+              hint: if this test fails, you forgot to add measure definition(s) into kpi__business_glossary.sql
+      - name: dimensions
+        description: 'Measurement dimensional coordinates'
+        data_type: object
+        data_tests:
+          - json_key_accepted_values:
+              key: geo
+              accepted_values: [ 'US', 'ROW' ]
+          - json_key_accepted_values:
+              key: country
+              accepted_values: [ "XX" ]
+              accepted_relation: ref('kpi__countries')
+              accepted_column: alpha_2
+          - json_key_accepted_values:
+              key: platform
+              accepted_values: [ 'iOS','Android','Web', 'Other' ]
+          - json_key_accepted_values:
+              key: user_class
+              accepted_values: [ 'Premium','Non-Premium','PremiumPlus' ]
+      - name: cycle_timestamp
+        description: 'Reporting period start time'
+        data_type: timestamp_ntz
+        data_tests:
+          - not_null
+      - name: cycle
+        description: 'Reporting period type'
+        data_type: text
+        data_tests:
+          - accepted_values:
+              values: ['day', 'week', 'bi-week', 'month', 'quarter', 'year']
+      - name: value
+        description: 'Measured value'
+        data_type: number
+      - name: id
+        description: Unique record identifier
+        data_type: text
+        data_tests:
+          - not_null
+          - unique
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - id
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - indicator
+            - dimensions
+            - cycle
+            - cycle_timestamp
+      - kpi_module_freshness:
+          reporting_period: week
+          severity: warn
+      - kpi_module_freshness:
+          reporting_period: month
+          severity: warn
