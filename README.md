@@ -64,64 +64,6 @@ ensuring clarity and fostering cross-functional collaboration. This unified fram
 monitoring of business performance, supports proactive strategy adjustments during regular cadence reviews,
 and ultimately drives sustainable growth and profitability.
 
-### Acquisition
-
-In the acquisition domain, a suite of models tracks the entire user funnel from initial registration 
-to ongoing engagement. The Active Registered Users module calculates the count of unique users engaging 
-within a reporting period by aggregating session logs and normalizing user data against standardized 
-dimensions like geography, platform, and subscription tier. Complementing this, the Registrations model
-records new sign-ups by processing user metadata, ensuring accurate roll-ups by mapping country codes 
-and platform identifiers consistently. The Resurrected Users model focuses on reactivation by identifying
-users who return after prolonged inactivity, illuminating the effectiveness of re-engagement strategies. 
-External market performance is captured by the Store Rank module, which benchmarks the app’s position in 
-app store charts using Sensor Tower data, and the Trial Starts module counts the initiation of trial 
-subscriptions with differentiation between new and existing users. Finally, the New Users model 
-synthesizes registration and resurrection data to reflect the net growth of the active user base. 
-Together, these acquisition metrics provide a detailed picture of growth drivers, identify the most 
-effective channels, and guide strategic initiatives on user activation.
-
-### Conversion
-Conversion metrics in the repository extend the analysis from user acquisition to the monetization journey.
-The Registration-to-Trial Conversion model (measuring RTT_F1D_CVR, RTT_F30D_CVR, and associated counts) 
-examines how effectively newly registered cohorts initiate trials within specific time windows, after 
-shifting the reporting period appropriately to allow ample time for conversion to occur. Building on this, 
-the Trial-to-Premium Conversion model evaluates how many trial users transition to premium subscriptions, 
-thereby quantifying the effectiveness of the trial model as a conversion tool. In addition, the Trial vs 
-Direct model distinguishes premium subscribers based on whether they entered through a trial conversion 
-path or switched directly, providing a nuanced view of revenue generation sources and informing both 
-product and marketing strategies. These conversion models optimize the funnel efficiency and underpin 
-decisions regarding promotional efforts and customer engagement policies.
-
-### Engagement
-Engagement metrics capture the depth and quality of user interactions with the core app functions. The 
-Active Food Users model counts users who log food entries during the reporting period, segmented by 
-geography, platform, and subscription class. This model aggregates logs from detailed event data to 
-highlight active participation in one of the app’s key features. The Average Daily Active Registered Users
-(DARU) metric provides a smoothed view by averaging daily active counts over the period, allowing for 
-trend detection and effective target-setting. The Consecutive Food Users model further refines this insight
-by identifying users with continuous engagement across back-to-back periods, thus measuring habitual
-behavior and user retention beyond a single cycle. Early-stage engagement is particularly critical;
-the Initial Food Users series is split into two parts where Part 1 captures raw counts of users who log 
-food within 24 hours and 7 days post-registration (along with the average food logs for the first week), 
-and Part 2 calculates the percentage of new registrants who show early food logging behavior by joining 
-with registration metrics , . Collectively, these engagement models provide actionable insights into user
-behavior and assist in refining feature implementations and engagement strategies.
-
-### Retention
-Retention metrics offer a long-term view by tracking how well premium subscriptions are maintained over time,
-making them fundamental to sustaining recurring revenue. The End-of-Period Premium Subscribers model 
-calculates the number of non-trial premium subscriptions that remain active at the close of each reporting 
-period. By generating a detailed calendar spine and joining against the premium transactions data, the model 
-ensures that only subscriptions still in force at the end of the period are counted, and further segmented by 
-geography, platform, subscription frequency, and user tier. The Premium Subscription Renewal Rate model, which 
-measures PN_OVER_PN_MINUS_1_RATE, examines the renewal behavior by comparing consecutive pay numbers, thus 
-offering a direct view of customer retention in recurring billing cycles. Furthermore, the Subscription Renewals
-model computes the overall renewal rate by determining the number of subscriptions up for renewal versus those
-successfully renewed within the period. These models work in tandem to provide a comprehensive picture of 
-retention performance, revealing not only the overall health of the subscription base but also the effectiveness
-of renewal strategies across various customer segments.
-
-
 
 
 ## Execution Flow
@@ -134,9 +76,9 @@ aggregations, and then outputting standardized metrics at the lowest level of gr
 
 Once each module’s data is validated and the individual KPIs are produced, the next stage merges these discrete
 outputs into the unified KPI repository. This repository serves as the single source of truth, consolidating 
-multiple dimensions (such as geography, platform, subscription tier, and user class) across domains into consistent,
-comparable tables. The repository itself undergoes its own series of tests to ensure that the union of all modules
-adheres to the strict data quality and dimensional standards defined in the business glossary.
+multiple dimensions across domains into consistent, comparable tables. The repository itself undergoes its own
+series of tests to ensure that the union of all modules adheres to the strict data quality and dimensional standards
+defined in the business glossary.
 
 With the repository in place, the performance report model is executed. This model integrates both current and 
 historical measurements from the KPI repository, enriching the data with trends and optional Annual Operating 
@@ -188,7 +130,8 @@ glossary.
 
 **INDICATOR (STRING)**
 
-A standardized, human‐readable metric name (for example “ACTIVE_REGISTERED_USERS”, “TRIAL_STARTS”, etc.). Each module restricts accepted values based on its domain logic.
+A standardized, human‐readable metric name (for example “ACQUISITIONS”, “AD_CLICK_TO_REGISTRATION_CVR”, etc.). Each
+module restricts accepted values based on its domain logic.
 
 
 **DIMENSIONS (OBJECT)**
@@ -198,7 +141,7 @@ A JSON object holding the key–value pairs that represent the metric’s dimens
 * geo (usually ‘US’ or ‘ROW’)
 * country (a standardized ISO alpha‐2 code or fallback “XX”)
 * platform (e.g., ‘iOS’, ‘Android’, ‘Web’, or ‘Other’)
-* Additional fields such as user_class, subscription_frequency, conversion_path, paynumber, or user_tenure_class, depending on the module.
+* Additional fields depending on the module.
 
 **CYCLE (STRING)**
 
@@ -256,7 +199,7 @@ Key Fields:
 - FLAG: A string field intended to hold an emoji or similar representation of the national flag.
 - NAME: The full country name as a string.
 
-**KPI__COUNTRY_HOLIDAYS_FOOD_OVERLOAD**
+**KPI__COUNTRY_HOLIDAYS**
 
 This seed captures specific holidays associated with food overloading, which can be used for seasonal analysis
 or to adjust KPIs in periods known for unusual activity.
