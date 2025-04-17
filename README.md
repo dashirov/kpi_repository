@@ -2,17 +2,17 @@
 
 # Quick Start
 
-Include package and run `dbt deps`
+### Include package and run `dbt deps`
 
 ```yaml
 # In consuming packages.yml
 packages:
-  - git: "https://github.com/your-org/kpi_repository.git"
+  - git: "https://github.com/dashirov/kpi_repository.git"
     revision: "main"  # or a specific tag like "0.1.0"
 
 ```
 
-Design your custom KPI models to interface and include them in `kpi_repository_models`
+### Design your custom KPI models to interface and include them in `kpi_repository_models`
 
 ```yaml
 # In consuming dbt_project.yml
@@ -24,12 +24,205 @@ vars:
     - my_custom_retention_model
 ```
 
-Provide your own seed files
+### Provide your own seed files
 
 - operating plan targets
 - business glossary
 - country holidays
 - shadow overrides
+
+### KPI Model Interface
+
+```jinja
+
+{{
+    config(
+         materialized='incremental'
+       , incremental_strategy='delete+insert'
+       , alias = 'kpi__manufacturing__beads'
+       , unique_key = 'id'
+       , query_tag = {
+          'cost-center': 'analytics', 
+          'data-product': 'kpi_collection_and_storage'
+         }
+    )
+}}
+
+{%- set anchor_date = var('anchor_date', dbt_utils.pretty_time(format='%Y-%m-%d')) %}
+{%- set reporting_period = var('reporting_period','week') %}
+{%- set backfill_mode = var('backfill', False) %}
+
+-- depends_on: {{ ref('kpi__business_glossary') }}
+
+WITH  
+  RANDOM_DATA AS (
+  
+    select 
+        seq4() AS TXID,
+        DATEADD(‘week’, -1 * uniform(1, 104, random(3)), SYSDATE()) AS EVENT_DATE,
+        uniform(1, 10, random(12)) AS BEADS,
+        CASE uniform(1, 3, random(43))
+            WHEN 1 THEN ‘Red’
+            WHEN 2 THEN ‘Green’
+            WHEN 3 THEN ‘Blue’
+        END AS COLOR,
+        CASE uniform(1, 3, random(31))
+            WHEN 1 THEN ‘Square’
+            WHEN 2 THEN ‘Round’
+            WHEN 3 THEN ‘Conic’
+        END AS SHAPE
+    from table (generator(rowcount => 4000)) v
+    
+ ),
+ 
+   DATA AS (
+   /* 
+        WARNING: NO NULL VALUES ARE ALLOWED IN ANY OF THE COLUMNS PRIOR TO PYRAMID PROCESSING 
+    */
+   SELECT * 
+   FROM RANDOM_DATA 
+   {% if is_incremental() and backfill_mode == False %}
+        /* ONLY PREVIOUS COMPLETE {{ reporting_period }} */
+        WHERE EVENT_DATE
+        BETWEEN
+        {{ date_trunc(reporting_period, "DATE('" ~ anchor_date ~ "')") }}
+        - {{ interval(reporting_period) }}
+        AND
+        {{ date_trunc(reporting_period, "DATE('" ~ anchor_date ~ "')") }}
+        - INTERVAL '1 millisecond'
+{% endif %}
+   
+ ),
+ 
+    /* 
+        WARNING: NO NULL VALUES ARE ALLOWED IN ANY OF THE COLUMNS PRIOR TO PYRAMID PROCESSING 
+    */ 
+    PYRAMID AS (
+        SELECT 
+            {{ date_trunc(reporting_period, "DATE('" ~ EVENT_DATE  ~ "')") }} AS CYCLE_TIMESTAMP,
+            ‘{{ reporting_period }}’ AS CYCLE,
+            COLOR,
+            SHAPE,
+            SUM(BEADS) AS BEADS
+        FROM RANDOM_DATA
+        GROUP BY GROUPING SETS (
+            (CYCLE,CYCLE_TIMESTAMP), 
+            (CYCLE,CYCLE_TIMESTAMP, COLOR),
+            (CYCLE,CYCLE_TIMESTAMP, SHAPE),
+            (CYCLE,CYCLE_TIMESTAMP, COLOR,SHAPE)
+        )
+)
+   SELECT
+   /* 
+      INTERFACE:
+       INDICATOR (STRING) 
+            - KPI__BUSINESS_GLOSSARY REGISTERED MEASUREMENT UNIT (KPI)
+       DIMENSIONS (OBJECT)
+            - COORDINATE IN A SYSTEM OF COORDINATES
+       CYCLE (TIMESTAMP_NTZ)
+            - DATETIME STARTING THE REPORTING PERIOD
+       CYCLE (STRING)
+            - REPORTING PERIOD SIZE (day, week, bi-week, month, quarter, year)
+       VALUE (NUMERIC)
+            - THE VALUE IN KPI__BUSINESS_GLOSSARY REGISTERED MEASUREMENT UNITS
+        
+   */
+    INDICATOR AS INDICATOR
+    , OBJECT_CONSTRUCT(
+        'geo', "GEO"::TEXT
+        , 'platform', "PLATFORM"::TEXT
+        , 'user_class', "USER_CLASS"::TEXT
+        , 'country', "COUNTRY"::TEXT
+    ) AS DIMENSIONS
+    , CYCLE_TIMESTAMP AS CYCLE_TIMESTAMP
+    , CYCLE AS CYCLE
+    , VALUE
+    , {{ dbt_utils.generate_surrogate_key([
+               'indicator'
+               ,'dimensions'
+               ,'cycle'
+               ,'cycle_timestamp'
+               ]) }} AS ID
+FROM PYRAMID
+UNPIVOT (VALUE FOR INDICATOR IN (BEADS))
+
+```
+
+
+```yaml
+
+version: 2
+models:
+  - name: kpi__acquisition__active_registered_users
+    description: Model documentation in MD format.
+    type: base table # or view
+    columns:
+      - name: indicator
+        description: 'What is being measured by this metric'
+        data_type: text
+        tests:
+          - accepted_values:
+              values: [ 'BEADS' ]
+          - assert_values_in_other_model:
+              values_model: kpi__business_glossary
+              values_column_name: indicator
+      - name: dimensions
+        description: 'Measurement dimensional coordinates'
+        data_type: object
+        tests:
+          - json_key_accepted_values:
+              key: color
+              accepted_values: [ 'Red', 'Green', 'Blue' ]
+      - name: cycle_timestamp
+        description: 'Reporting period start time'
+        data_type: date
+        tests:
+          - not_null
+      - name: cycle
+        description: 'Reporting period type'
+        data_type: text
+        tests:
+          - accepted_values:
+              values: ['hour', 'day', 'week', 'bi-week', 'month', 'quarter', 'year' ]
+      - name: value
+        description: 'Metric value'
+        data_type: number
+      - name: id
+        description: Unique record identifier
+        data_type: text
+        tests:
+          - not_null
+          - unique
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - id
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - indicator
+            - dimensions
+            - cycle
+            - cycle_timestamp
+      - kpi_module_freshness:
+          reporting_period: day
+          severity: warn
+      - kpi_module_freshness:
+          reporting_period: week
+          severity: warn
+      - kpi_module_freshness:
+          reporting_period: bi-week
+          severity: warn
+      - kpi_module_freshness:
+          reporting_period: month
+          severity: warn
+      - kpi_module_freshness:
+          reporting_period: quarter
+          severity: warn
+      - kpi_module_freshness:
+          reporting_period: year
+          severity: warn
+
+```
 
 ## Overview
 The repository is designed to consolidate diverse key performance indicators (KPIs) 
