@@ -22,28 +22,35 @@
 {% set user_models = var('kpi_repository_models', []) %}
 {% set required_columns = ['indicator', 'dimensions', 'cycle', 'cycle_timestamp', 'value', 'id'] %}
 
-{% if not user_models %}
-  {% do exceptions.raise_compiler_error("You must define 'kpi_repository_models' in your dbt_project.yml to use the KPI Repository.") %}
-{% endif %}
-{% for model_name in user_models %}
-  {% set model_relation = ref(model_name) %}
+{#-
+  Consumer models are optional. With none configured the repository still runs
+  as a standalone "hello world": it materializes purely from the
+  kpi__repository_shadow seed. When a consuming project sets
+  `kpi_repository_models`, each is validated (at execute time, so parsing never
+  touches the warehouse) and unioned in.
+-#}
+{% if execute %}
+  {% for model_name in user_models %}
+    {% set model_relation = ref(model_name) %}
 
-  {% if not is_relation(model_relation) %}
-    {% do exceptions.raise_compiler_error("The model '" ~ model_name ~ "' could not be resolved with ref(). Check if the model exists.") %}
-  {% endif %}
-
-  {% set model_columns = adapter.get_columns_in_relation(model_relation) %}
-  {% set model_column_names = model_columns | map(attribute='name') | list %}
-
-  {% for required_col in required_columns %}
-    {% if required_col | lower not in model_column_names | map('lower') | list %}
-      {% do exceptions.raise_compiler_error("The model '" ~ model_name ~ "' is missing required column '" ~ required_col ~ "'. It must have all columns: " ~ required_columns | join(', ')) %}
+    {% if not is_relation(model_relation) %}
+      {% do exceptions.raise_compiler_error("The model '" ~ model_name ~ "' could not be resolved with ref(). Check if the model exists.") %}
     {% endif %}
-  {% endfor %}
 
-{% endfor %}
+    {% set model_columns = adapter.get_columns_in_relation(model_relation) %}
+    {% set model_column_names = model_columns | map(attribute='name') | list %}
+
+    {% for required_col in required_columns %}
+      {% if required_col | lower not in model_column_names | map('lower') | list %}
+        {% do exceptions.raise_compiler_error("The model '" ~ model_name ~ "' is missing required column '" ~ required_col ~ "'. It must have all columns: " ~ required_columns | join(', ')) %}
+      {% endif %}
+    {% endfor %}
+
+  {% endfor %}
+{% endif %}
 
 with
+{% if user_models %}
     DATA as (
         {{ dbt_utils.union_relations(
             relations = user_models,
@@ -51,8 +58,9 @@ with
             include=['ID', 'INDICATOR', 'CYCLE', 'DIMENSIONS','CYCLE_TIMESTAMP', 'VALUE']
             ) }}
     )
-
-    , FINAL_DATASET AS (
+    ,
+{% endif %}
+    FINAL_DATASET AS (
         {% if shadow_exists %}
 
             {{ log("Shadow exists", info=True) }}
@@ -68,6 +76,7 @@ with
                 , to_numeric(VALUE) AS VALUE
                 , ID
             FROM {{ ref('kpi__repository_shadow') }}
+            {% if user_models %}
             UNION
             SELECT
                 _DBT_SOURCE_RELATION
@@ -91,7 +100,8 @@ with
                         = to_timestamp_ntz(SHADOW.CYCLE_TIMESTAMP)
                     )
             )
-        {% else %}
+            {% endif %}
+        {% elif user_models %}
             SELECT
                 _DBT_SOURCE_RELATION
                 , INDICATOR
@@ -101,6 +111,18 @@ with
                 , VALUE
                 , ID
             FROM DATA
+        {% else %}
+            {#- No shadow seed and no consumer models: emit an empty, correctly
+                typed result so the model still builds. -#}
+            SELECT
+                cast(null AS TEXT) AS _DBT_SOURCE_RELATION
+                , cast(null AS TEXT) AS INDICATOR
+                , parse_json(null) AS DIMENSIONS
+                , cast(null AS TEXT) AS CYCLE
+                , cast(null AS TIMESTAMP_NTZ) AS CYCLE_TIMESTAMP
+                , cast(null AS NUMBER(18,4)) AS VALUE
+                , cast(null AS TEXT) AS ID
+            WHERE 1 = 0
         {% endif %}
     )
 
@@ -109,7 +131,7 @@ FROM FINAL_DATASET
 {% if is_incremental() and backfill_mode == False %}
     /* ONLY PREVIOUS COMPLETE {{ reporting_period }} */
     WHERE
-        CYCLE = '{reporting_period}'
+        CYCLE = '{{ reporting_period }}'
         AND CYCLE_TIMESTAMP =
         {{ date_trunc(reporting_period, "DATE('" ~ anchor_date ~ "')") }}
         - {{ interval(reporting_period) }}
