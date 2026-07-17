@@ -41,12 +41,6 @@ seeds:
         ALPHA_3: varchar(3)
         FLAG: varchar
         NAME: varchar
-    kpi__country_holidays:
-      enabled: true
-      +column_types:
-        COUNTRY: string
-        DATE: date
-        HOLIDAY: string
     kpi__country_regions:
       enabled: true
       +column_types:
