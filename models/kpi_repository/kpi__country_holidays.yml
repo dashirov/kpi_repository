@@ -1,6 +1,6 @@
 version: 2
 seeds:
-  - name: kpi__country_holidays_food_overload
+  - name: kpi__country_holidays
     description: |
       Country holidays associated with food overeating
     type: base table
