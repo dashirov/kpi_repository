@@ -15,6 +15,16 @@ clean-targets:         # directories to be removed by `dbt clean`
   - "target"
   - "dbt_packages"
 
+models:
+  kpi_repository:
+    # Silo: everything this project materializes — models AND their pre-hook
+    # UDFs (which follow {{ this.schema }}) — lives in
+    # <target_schema>_KPI_REPOSITORY, owned by the dbt role. The platform's
+    # visualization schema (the bare target schema) keeps its own objects and
+    # UDFs under its own role; the two sides manage their functions
+    # independently.
+    +schema: kpi_repository
+
 seeds:
   kpi_repository:
     +schema: kpi_repository
