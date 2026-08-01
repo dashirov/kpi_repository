@@ -90,13 +90,18 @@ WITH
     )
 
     , aop AS (
+        {#- to_timestamp_ntz() mirrors the kpi__repository_shadow pattern:
+            the aop seed ships header-only, and dbt types an empty CSV's
+            columns as NUMBER regardless of +column_types, so the raw column
+            cannot be compared to a DATE. The cast is an identity once real
+            TIMESTAMP_NTZ data lands. -#}
         SELECT
-            cycle_timestamp
+            TO_TIMESTAMP_NTZ(cycle_timestamp) AS cycle_timestamp
             , plan
             , indicator,
             {%- if aop_dimensions_datatype != 'VARIANT' -%}
-                
-                
+
+
                 PARSE_JSON(dimensions) AS dimensions
             {%- else -%}
         DIMENSIONS
@@ -105,7 +110,7 @@ WITH
         FROM {{ ref('kpi__aop_targets') }}
         WHERE
             cycle = '{{ reporting_period }}'
-            AND cycle_timestamp
+            AND TO_TIMESTAMP_NTZ(cycle_timestamp)
             = {{ date_trunc(reporting_period, "DATE('" ~ anchor_date ~ "')") }}
             - {{ interval(reporting_period) }}
     )
