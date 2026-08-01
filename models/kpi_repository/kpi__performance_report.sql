@@ -14,7 +14,7 @@
             "{{ create_object_keys_udf(this) }}",
             "{{ create_object_values_udf(this) }}",
             "{{ create_kpi_display_name_udf(this) }}"
-        ] if is_airflow_dev() or is_dev() else []
+        ]
     )
 }}
 
